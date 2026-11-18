@@ -245,7 +245,7 @@ nav.tabs .badge{background:#fff;color:var(--bad);font-weight:700}
   <header class="top">
     <div>
       <h1 id="hTitulo">Cursada</h1>
-      <p><span id="hSub">Diseño Gráfico 3 · Alumnos 2026</span> · <button class="linkbtn" data-act="editarCurso">Editar</button></p>
+      <p><span id="hSub">Diseño Gráfico 3 · Alumnos 2026</span> · <button class="linkbtn" data-act="editarCurso">Editar</button> · <button class="linkbtn" data-act="respaldo">Respaldo</button></p>
     </div>
   </header>
 
@@ -399,7 +399,7 @@ async function conectar(){
 function iniciarLocal(){
   modoLocal = true;
   try { const raw = localStorage.getItem(LS_KEY); if (raw){ const o = JSON.parse(raw); ['alumnos','clases','tps','config'].forEach(k => S[k] = o[k] || {}); } } catch(e){}
-  setSync('Vista previa: los datos quedan solo en este navegador');
+  setSync('Los datos de esta versión quedan guardados solo en este navegador');
   renderTodo();
 }
 
@@ -456,7 +456,7 @@ function guardarBorrador(){
     if (!marcados.length && !b.tema) ok = await delDoc('clases', b.fecha);
     else ok = await setDoc('clases', b.fecha, {fecha:b.fecha, tema:b.tema, estado:est, actualizado:Date.now()});
     if (borrador === b) b.sucio = false;
-    if (ok && !soloLectura) setSync(modoLocal ? 'Vista previa: los datos quedan solo en este navegador' : 'Guardado');
+    if (ok && !soloLectura) setSync(modoLocal ? 'Los datos de esta versión quedan guardados solo en este navegador' : 'Guardado');
   }, 400);
 }
 function renderLista(){
@@ -543,7 +543,9 @@ function renderPerfil(){
 
   // Ficha
   h += `<h3 class="sec">Ficha del alumno</h3>`;
-  if (a.ficha && a.ficha.id){
+  if (a.ficha && a.ficha.id && modoLocal){
+    h += `<p class="notice">Este alumno tiene una ficha cargada en la versión de Claude. Las fichas no viajan con el respaldo.</p>`;
+  } else if (a.ficha && a.ficha.id){
     const url = '/_blob/' + encodeURIComponent(a.ficha.id);
     const esImg = /^image\//.test(a.ficha.tipo || '');
     h += `<div class="card"><p style="margin:0 0 10px;color:var(--muted);font-size:.9rem">${esc(a.ficha.nombre || 'Ficha')}${a.ficha.subida ? ' · subida el ' + esc(fmtFecha(new Date(a.ficha.subida).toISOString().slice(0,10))) : ''}</p>
@@ -698,6 +700,55 @@ function parsearLista(txt){
   }).filter(Boolean);
 }
 
+
+/* ---------- respaldo: exportar / importar ---------- */
+function armarRespaldo(){
+  const limpio = col => { const o = {}; Object.values(S[col]).forEach(d => { const c = clone(d); delete c.id; o[d.id] = c; }); return o; };
+  return {app:'cursada-dg3', version:1, exportado:new Date().toISOString(), alumnos:limpio('alumnos'), clases:limpio('clases'), tps:limpio('tps'), config:limpio('config')};
+}
+async function copiarTexto(txt){
+  try { await navigator.clipboard.writeText(txt); return true; } catch(e){}
+  const ta = document.createElement('textarea'); ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch(e){} ta.remove(); return ok;
+}
+function abrirRespaldo(){
+  const n = Object.keys(S.alumnos).length, c = Object.keys(S.clases).length, t = Object.keys(S.tps).length;
+  abrirModal(`<h2>Respaldo de datos</h2>
+    <p style="color:var(--muted);margin:0 0 14px">Ahora hay ${n} alumnos, ${c} clases y ${t} TPs. El respaldo lleva todo menos los archivos de las fichas.</p>
+    <h3 style="font-size:1rem;margin:0 0 8px">Exportar</h3>
+    <div class="bar"><button class="btn primary" data-resp="copiar">Copiar datos</button>${modoLocal ? '<button class="btn" data-resp="descargar">Descargar archivo</button>' : ''}</div>
+    <h3 style="font-size:1rem;margin:6px 0 8px">Importar</h3>
+    <p style="color:var(--muted);font-size:.9rem;margin:0 0 8px">Pegá los datos copiados o elegí el archivo. Reemplaza todo lo que hay ahora en esta app.</p>
+    <textarea class="inp" id="respTxt" placeholder="Pegá acá los datos"></textarea>
+    <div class="bar" style="margin-top:10px"><button class="btn" data-resp="archivo">Elegir archivo</button><button class="btn primary" data-resp="importar">Importar</button></div>
+    <div class="bar" style="justify-content:flex-end;margin:6px 0 0"><button class="btn ghost" data-modal="no">Cerrar</button></div>`);
+}
+const respFile = document.createElement('input'); respFile.type='file'; respFile.accept='.json,application/json,text/plain'; respFile.hidden=true; respFile.id='respFile'; document.body.appendChild(respFile);
+respFile.addEventListener('change', async () => { const f = respFile.files[0]; respFile.value=''; if (!f) return; const t = await f.text(); const ta = $('#respTxt'); if (ta) ta.value = t; toast('Archivo listo: tocá Importar'); });
+async function importarRespaldo(txt){
+  let d; try { d = JSON.parse(txt); } catch(e){ toast('Eso no es un respaldo válido'); return; }
+  if (!d || d.app !== 'cursada-dg3' || typeof d.alumnos !== 'object'){ toast('Eso no es un respaldo de esta app'); return; }
+  if (soloLectura){ toast('Solo lectura'); return; }
+  cerrarModal(null);
+  if (modoLocal){
+    ['alumnos','clases','tps','config'].forEach(col => { S[col] = {}; Object.entries(d[col]||{}).forEach(([id,v]) => S[col][id] = Object.assign(clone(v), {id})); });
+    persistLocal(); borrador = null; renderTodo(); toast('Datos importados'); return;
+  }
+  toast('Importando…');
+  for (const col of ['config','alumnos','tps','clases']){
+    for (const [id,v] of Object.entries(d[col]||{})){ if (!(await setDoc(col, id, clone(v)))) return; }
+  }
+  toast('Datos importados');
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-resp]'); if (!b) return;
+  const r = b.dataset.resp;
+  if (r === 'copiar'){ const ok = await copiarTexto(JSON.stringify(armarRespaldo())); toast(ok ? 'Datos copiados. Pegalos donde quieras importarlos' : 'No se pudo copiar'); }
+  if (r === 'descargar'){ const blob = new Blob([JSON.stringify(armarRespaldo(), null, 1)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cursada-respaldo-' + hoy() + '.json'; document.body.appendChild(a); a.click(); a.remove(); }
+  if (r === 'archivo') respFile.click();
+  if (r === 'importar'){ const t = ($('#respTxt').value||'').trim(); if (!t){ toast('Pegá los datos o elegí un archivo'); return; } await importarRespaldo(t); }
+});
+
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
   const t = e.target;
@@ -720,7 +771,7 @@ document.addEventListener('click', async e => {
 
   const b = t.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act;
-  if (soloLectura && act !== 'x'){ toast('Solo lectura'); return; }
+  if (soloLectura && act !== 'respaldo'){ toast('Solo lectura'); return; }
   if (act === 'todosP'){ alumnosOrden().forEach(a => borrador.estado[a.id] = 'P'); guardarBorrador(); renderLista(); }
   if (act === 'restoA'){ let n=0; alumnosOrden().forEach(a => { if (!borrador.estado[a.id]){ borrador.estado[a.id] = 'A'; n++; } }); if (n){ guardarBorrador(); renderLista(); toast(n + ' marcados como ausentes'); } else toast('No quedaba nadie sin marcar'); }
   if (act === 'limpiar'){ if (await confirmar('Limpiar la lista', 'Se desmarca a todos en esta fecha.', 'Limpiar')){ borrador.estado = {}; guardarBorrador(); renderLista(); } }
@@ -765,6 +816,7 @@ document.addEventListener('click', async e => {
     const r = await formModal('Nuevo trabajo práctico', [{k:'nombre', l:'Nombre', v:'TP ' + n}, {k:'fecha', l:'Fecha de entrega', t:'date', v:hoy()}], 'Crear');
     if (r && r.nombre){ const id = nuevoId(); tpAbierto = id; await setDoc('tps', id, {nombre:r.nombre, fecha:r.fecha||'', notas:{}, creado:Date.now()}); toast('TP creado: cargá las notas'); }
   }
+  if (act === 'respaldo'){ abrirRespaldo(); return; }
   if (act === 'editarCurso'){
     const c = S.config.curso || {};
     const r = await formModal('Nombre de la cursada', [{k:'titulo', l:'Título', v:c.titulo || 'Cursada'}, {k:'sub', l:'Subtítulo', v:c.sub || 'Diseño Gráfico 3 · Alumnos 2026'}]);
