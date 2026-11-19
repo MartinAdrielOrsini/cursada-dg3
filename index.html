@@ -237,6 +237,34 @@ nav.tabs .badge{background:#fff;color:var(--bad);font-weight:700}
 .toast{background:var(--blue);color:#fff;box-shadow:3px 3px 0 var(--yellow)}
 .sheet{border:2px solid var(--ink)}
 .sheet h2{color:var(--blue)}
+
+.cal{padding:14px 12px}
+.calhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
+.calhead div{text-align:center}
+.calhead strong{display:block;font-family:"Bricolage Grotesque",sans-serif;font-size:1.2rem}
+.calhead small{color:var(--muted)}
+.calnav{width:40px;height:40px;border-radius:12px;border:1.5px solid var(--ink);background:var(--card);font-size:1.3rem;line-height:1;font-weight:700}
+.calnav:disabled{opacity:.3;cursor:default}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.calgrid .dow{text-align:center;font-size:.75rem;font-weight:600;color:var(--muted);padding:2px 0 4px}
+.day{aspect-ratio:1/1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.9rem;color:var(--muted);border:0;background:transparent;padding:0;min-width:0}
+.day.today{outline:1.5px dashed var(--ink);outline-offset:-2px}
+.day.clase{background:var(--blue);color:#fff;cursor:pointer}
+.day.clase.conaus{background:var(--yellow);color:var(--onyellow)}
+.day.clase b{font-size:.95rem;line-height:1.1}
+.day.clase small{font-size:.62rem;font-weight:600;opacity:.9;line-height:1.1}
+.day.sel{box-shadow:0 0 0 3px var(--ink)}
+.callegend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.78rem;color:var(--muted);margin:10px 2px 0}
+.lg{display:inline-block;width:12px;height:12px;border-radius:4px}
+.lg.clase{background:var(--blue)} .lg.conaus{background:var(--yellow)}
+.callegend .li{display:inline-flex;align-items:center;gap:5px;margin-right:8px}
+.caldet{border-color:var(--blue)}
+.ausl{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.ausl button{border:0;background:none;padding:2px 0;color:var(--ink);text-decoration:underline;text-underline-offset:2px;text-align:left}
+.grow{grid-template-columns:minmax(0,1fr) 72px}
+.grow input{min-width:0;max-width:100%}
+input,textarea,select,button{box-sizing:border-box}
+.hist .body{overflow:hidden}
 </style>
 </head>
 <body>
@@ -342,7 +370,10 @@ function statsAsistencia(id){
 }
 function notasDe(id){ return tpsOrden().map(t => ({tp:t, nota:numNota((t.notas||{})[id])})); }
 function promedio(arr){ const v = arr.filter(x => x!=null); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; }
-const promAlumno = id => promedio(notasDe(id).map(x => x.nota));
+// El TP 0 es diagnóstico: no cuenta para el promedio salvo que se indique lo contrario
+const noCuenta = t => (typeof t.noCuenta === 'boolean') ? t.noCuenta : /^tp\s*0$/i.test((t.nombre||'').trim());
+const cuenta = t => !noCuenta(t);
+const promAlumno = id => promedio(notasDe(id).filter(x => cuenta(x.tp)).map(x => x.nota));
 const nivelPct = p => p==null ? '' : p>=75 ? 'ok' : p>=60 ? 'mid' : 'bad';
 const nivelNota = n => n==null ? '' : n>=7 ? 'ok' : n>=4 ? 'mid' : 'bad';
 function alertas(){ return alumnosOrden().map(al => ({al, st:statsAsistencia(al.id)})).filter(x => x.st.racha >= UMBRAL_FALTAS); }
@@ -531,7 +562,7 @@ function renderPerfil(){
   const box = $('#perfilBody');
   const a = perfilId && S.alumnos[perfilId];
   if (!a){ box.innerHTML = `<button class="back" data-tab="p-alumnos">‹ Alumnos</button><div class="empty"><h2>Este alumno ya no está</h2></div>`; return; }
-  const st = statsAsistencia(a.id), nt = notasDe(a.id), pr = promedio(nt.map(x=>x.nota));
+  const st = statsAsistencia(a.id), nt = notasDe(a.id), pr = promAlumno(a.id);
   let h = `<button class="back" data-tab="p-alumnos">‹ Alumnos</button><h2 class="pname">${esc(a.nombre)}</h2>`;
   if (a.revisar) h += `<div class="check">El nombre se cargó cortado desde Notion. Completalo en "Editar datos".</div>`;
   if (st.racha >= UMBRAL_FALTAS) h += `<div class="alert"><strong>Faltó a las últimas ${st.racha} clases seguidas</strong></div>`;
@@ -572,7 +603,7 @@ function renderPerfil(){
   if (!nt.length) h += `<p style="margin:0;color:var(--muted)">Todavía no hay trabajos prácticos creados.</p>`;
   else {
     if (nt.some(x => x.nota != null)) h += chartNotas(nt.map(x => ({label:x.tp.nombre||'TP', v:x.nota})));
-    h += `<div class="grades" style="margin-top:8px">` + nt.map(x => `<div class="grow"><span class="nm">${esc(x.tp.nombre)}</span><span class="chip ${nivelNota(x.nota)} num" style="justify-self:end">${x.nota==null ? 'Sin nota' : fmtN(x.nota)}</span></div>`).join('') + `</div>`;
+    h += `<div class="grades" style="margin-top:8px">` + nt.map(x => `<div class="grow"><span class="nm">${esc(x.tp.nombre)}${noCuenta(x.tp) ? ' <small style="color:var(--muted)">· no cuenta</small>' : ''}</span><span class="chip ${nivelNota(x.nota)} num" style="justify-self:end">${x.nota==null ? 'Sin nota' : fmtN(x.nota)}</span></div>`).join('') + `</div>`;
   }
   h += `</div>`;
 
@@ -596,21 +627,59 @@ function renderClases(){
     <div class="tile ${nivelPct(prom)}"><b class="num">${fmtPct(prom)}</b><span>Asistencia promedio</span></div>
     <div class="tile ${nAl?'bad':''}"><b class="num">${nAl}</b><span>Con 3+ faltas seguidas</span></div></div>`;
   h += htmlAlertas();
+  h += htmlCalendario(cl, als);
   h += `<h3 class="sec">Asistencia por alumno</h3><div class="card" style="padding:6px 16px">` +
     (conDatos.length ? conDatos.slice().sort((x,y) => x.st.pct - y.st.pct || x.a.nombre.localeCompare(y.a.nombre,'es')).map(x =>
       `<button class="barrow" data-perfil="${esc(x.a.id)}"><span class="nm">${esc(x.a.nombre)}</span><span class="track"><i class="${nivelPct(x.st.pct)}" style="width:${Math.max(2,x.st.pct)}%"></i></span><span class="v num">${fmtPct(x.st.pct)}</span></button>`).join('')
       : `<p style="color:var(--muted)">Sin datos todavía.</p>`) + `</div>`;
-  h += `<h3 class="sec">Fechas</h3><ul class="hist">` + cl.slice().reverse().map(c => {
-    const e = c.estado || {};
-    const pres = als.filter(a => e[a.id]==='P'), aus = als.filter(a => e[a.id]==='A'), sin = als.filter(a => !e[a.id]);
-    return `<li><details><summary><span class="t"><strong>${esc(fmtFecha(c.fecha, true))}</strong>${c.tema ? `<small>${esc(c.tema)}</small>` : ''}</span><span class="meta num">${pres.length} presentes<br>${aus.length} ausentes</span></summary><div class="body">
-      <h3 style="color:var(--ok)">Presentes (${pres.length})</h3><p>${pres.map(a => esc(a.nombre)).join(' · ') || '–'}</p>
-      <h3 style="color:var(--bad)">Ausentes (${aus.length})</h3><p>${aus.map(a => esc(a.nombre)).join(' · ') || '–'}</p>
-      ${sin.length ? `<h3>Sin marcar (${sin.length})</h3><p>${sin.map(a => esc(a.nombre)).join(' · ')}</p>` : ''}
-      <div class="bar" style="margin-top:12px"><button class="btn sm" data-editclase="${esc(c.fecha)}">Editar lista</button><button class="btn sm danger" data-delclase="${esc(c.fecha)}">Eliminar clase</button></div></div></details></li>`;
-  }).join('') + `</ul>`;
   box.innerHTML = h;
 }
+
+
+/* ---------- calendario de clases ---------- */
+let calMes = null, calSel = null;
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function htmlCalendario(cl, als){
+  const porFecha = {}; cl.forEach(c => porFecha[c.fecha] = c);
+  const meses = [...new Set(cl.map(c => c.fecha.slice(0,7)))].sort();
+  if (!calMes || !meses.length) calMes = meses[meses.length-1] || hoy().slice(0,7);
+  if (calSel && !porFecha[calSel]) calSel = null;
+  const [y, m] = calMes.split('-').map(Number);
+  const primero = new Date(y, m-1, 1), dias = new Date(y, m, 0).getDate();
+  const offset = (primero.getDay() + 6) % 7; // lunes primero
+  const enMes = cl.filter(c => c.fecha.startsWith(calMes));
+  const idx = meses.indexOf(calMes);
+  const prev = idx > 0 ? meses[idx-1] : (idx === -1 ? meses.filter(x => x < calMes).pop() : null);
+  const next = idx >= 0 && idx < meses.length-1 ? meses[idx+1] : (idx === -1 ? meses.find(x => x > calMes) : null);
+  let h = `<h3 class="sec">Fechas</h3><div class="card cal">
+    <div class="calhead"><button class="calnav" data-calmes="${prev||''}" ${prev?'':'disabled'} aria-label="Mes anterior">‹</button>
+      <div><strong>${MESES[m-1]} ${y}</strong><small>${enMes.length} ${enMes.length===1?'clase':'clases'}</small></div>
+      <button class="calnav" data-calmes="${next||''}" ${next?'':'disabled'} aria-label="Mes siguiente">›</button></div>
+    <div class="calgrid">${['Lu','Ma','Mi','Ju','Vi','Sá','Do'].map(d => `<span class="dow">${d}</span>`).join('')}`;
+  for (let i=0; i<offset; i++) h += `<span></span>`;
+  const hoyS = hoy();
+  for (let d=1; d<=dias; d++){
+    const f = `${calMes}-${String(d).padStart(2,'0')}`, c = porFecha[f];
+    if (!c){ h += `<span class="day ${f===hoyS?'today':''}">${d}</span>`; continue; }
+    const e = c.estado || {}, aus = als.filter(a => e[a.id]==='A').length, pres = als.filter(a => e[a.id]==='P').length;
+    h += `<button class="day clase ${aus?'conaus':''} ${calSel===f?'sel':''} ${f===hoyS?'today':''}" data-calday="${f}" aria-label="${esc(fmtFecha(f,true))}: ${pres} presentes, ${aus} ausentes"><b>${d}</b><small>${pres}/${als.length}</small></button>`;
+  }
+  h += `</div><p class="callegend"><span class="li"><span class="lg clase"></span>Sin faltas</span><span class="li"><span class="lg conaus"></span>Con ausentes</span><span class="li">El número chico es presentes / total. Tocá un día para ver el detalle.</span></p></div>`;
+  if (calSel){
+    const c = porFecha[calSel], e = c.estado || {};
+    const pres = als.filter(a => e[a.id]==='P'), aus = als.filter(a => e[a.id]==='A'), sin = als.filter(a => !e[a.id]);
+    h += `<div class="card caldet"><h3>${esc(fmtFecha(calSel, true))}</h3>${c.tema ? `<p style="margin:-4px 0 8px;color:var(--muted)">${esc(c.tema)}</p>` : ''}
+      <p class="num" style="margin:0 0 6px"><strong>${pres.length}</strong> presentes · <strong>${aus.length}</strong> ausentes${sin.length ? ' · ' + sin.length + ' sin marcar' : ''}</p>
+      ${aus.length ? `<p style="margin:0 0 4px"><strong>Ausentes:</strong></p><ul class="ausl">${aus.map(a => `<li><button data-perfil="${esc(a.id)}">${esc(a.nombre)}</button></li>`).join('')}</ul>` : `<p style="margin:0;color:var(--muted)">Vinieron todos.</p>`}
+      ${sin.length ? `<p style="margin:8px 0 0;color:var(--muted);font-size:.9rem">Sin marcar: ${sin.map(a => esc(a.nombre)).join(' · ')}</p>` : ''}
+      <div class="bar" style="margin:12px 0 0"><button class="btn sm" data-editclase="${esc(calSel)}">Editar lista</button><button class="btn sm danger" data-delclase="${esc(calSel)}">Eliminar clase</button></div></div>`;
+  }
+  return h;
+}
+document.addEventListener('click', e => {
+  const nv = e.target.closest('[data-calmes]'); if (nv && nv.dataset.calmes){ calMes = nv.dataset.calmes; calSel = null; renderClases(); return; }
+  const dy = e.target.closest('[data-calday]'); if (dy){ calSel = calSel === dy.dataset.calday ? null : dy.dataset.calday; renderClases(); const det = document.querySelector('.caldet'); if (det && calSel) det.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+});
 
 /* ---------- TPs ---------- */
 let tpAbierto = null;
@@ -622,14 +691,14 @@ function renderTps(){
   if (promsTp.some(v => v != null)) h += `<div class="card"><h3>Promedio del curso por TP</h3>${chartNotas(tps.map((t,i) => ({label:t.nombre||'TP', v:promsTp[i]})), 200)}</div>`;
   h += `<ul class="hist">` + tps.map((t,i) => {
     const notas = t.notas || {}, cargadas = als.filter(a => numNota(notas[a.id]) != null).length;
-    return `<li><details data-tp="${esc(t.id)}" ${tpAbierto===t.id?'open':''}><summary><span class="t"><strong>${esc(t.nombre)}</strong>${t.fecha ? `<small>${esc(fmtFecha(t.fecha, true))}</small>` : ''}</span><span class="meta num">Prom. ${fmtN(promsTp[i])}<br>${cargadas}/${als.length} con nota</span></summary><div class="body">
+    return `<li><details data-tp="${esc(t.id)}" ${tpAbierto===t.id?'open':''}><summary><span class="t"><strong>${esc(t.nombre)}</strong>${noCuenta(t) ? ' <span class="chip">No cuenta</span>' : ''}${t.fecha ? `<small>${esc(fmtFecha(t.fecha, true))}</small>` : ''}</span><span class="meta num">Prom. ${fmtN(promsTp[i])}<br>${cargadas}/${als.length} con nota</span></summary><div class="body">
       <p style="margin:0 0 8px">Escribí la nota (1 a 10). Se guarda sola al salir del casillero.</p>
       <div class="grades">${als.map(a => { const v = numNota(notas[a.id]); return `<div class="grow"><label class="nm" for="n-${esc(t.id)}-${esc(a.id)}">${esc(a.nombre)}</label><input id="n-${esc(t.id)}-${esc(a.id)}" class="num ${v!=null && v<4 ? 'low':''}" inputmode="decimal" autocomplete="off" data-nota="${esc(a.id)}" data-tpid="${esc(t.id)}" value="${v==null?'':esc(fmtN(v))}" placeholder="–"></div>`; }).join('')}</div>
-      <div class="bar" style="margin-top:12px"><button class="btn sm" data-edittp="${esc(t.id)}">Renombrar</button><button class="btn sm danger" data-deltp="${esc(t.id)}">Eliminar TP</button></div></div></details></li>`;
+      <div class="bar" style="margin-top:12px"><button class="btn sm" data-edittp="${esc(t.id)}">Renombrar</button><button class="btn sm" data-cuentatp="${esc(t.id)}">${noCuenta(t) ? 'Contar en el promedio' : 'No contar en el promedio'}</button><button class="btn sm danger" data-deltp="${esc(t.id)}">Eliminar TP</button></div></div></details></li>`;
   }).join('') + `</ul>`;
   const filas = als.map(a => ({a, p:promAlumno(a.id)})).filter(x => x.p != null);
   if (filas.length){
-    h += `<h3 class="sec">Promedio por alumno</h3><div class="card" style="padding:6px 16px">` + filas.sort((x,y) => y.p - x.p).map(x =>
+    h += `<h3 class="sec">Promedio por alumno</h3>${tps.some(t => noCuenta(t)) ? `<p class="notice">No cuentan para el promedio: ${tps.filter(t => noCuenta(t)).map(t => esc(t.nombre)).join(', ')}.</p>` : ''}<div class="card" style="padding:6px 16px">` + filas.sort((x,y) => y.p - x.p).map(x =>
       `<button class="barrow" data-perfil="${esc(x.a.id)}"><span class="nm">${esc(x.a.nombre)}</span><span class="track"><i class="${nivelNota(x.p)}" style="width:${x.p*10}%"></i></span><span class="v num">${fmtN(x.p)}</span></button>`).join('') + `</div>`;
   }
   box.innerHTML = h;
@@ -766,6 +835,8 @@ document.addEventListener('click', async e => {
   if (dc){ if (await confirmar('Eliminar clase', `Se borra la lista del ${fmtFecha(dc.dataset.delclase, true)}.`)){ if (await delDoc('clases', dc.dataset.delclase)){ if (borrador && borrador.fecha === dc.dataset.delclase) borrador = null; toast('Clase eliminada'); } } return; }
   const et = t.closest('[data-edittp]');
   if (et){ const tp = S.tps[et.dataset.edittp]; const r = await formModal('Editar trabajo práctico', [{k:'nombre', l:'Nombre', v:tp.nombre}, {k:'fecha', l:'Fecha de entrega', t:'date', v:tp.fecha}]); if (r && r.nombre){ tpAbierto = tp.id; await updDoc('tps', tp.id, {nombre:r.nombre, fecha:r.fecha||''}); } return; }
+  const ct = t.closest('[data-cuentatp]');
+  if (ct){ const tp = S.tps[ct.dataset.cuentatp]; tpAbierto = tp.id; const era = noCuenta(tp); if (await updDoc('tps', tp.id, {noCuenta: !era})) toast(era ? tp.nombre + ' vuelve a contar para el promedio' : tp.nombre + ' ya no cuenta para el promedio'); return; }
   const dt = t.closest('[data-deltp]');
   if (dt){ const tp = S.tps[dt.dataset.deltp]; if (await confirmar('Eliminar TP', `Se borra "${tp.nombre}" con todas sus notas.`)){ await delDoc('tps', tp.id); toast('TP eliminado'); } return; }
 
